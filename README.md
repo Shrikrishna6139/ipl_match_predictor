@@ -1,7 +1,28 @@
 # IPL Match Predictor — Deployment
 
 This folder is a self-contained, ready-to-deploy Streamlit app built on the model
-trained in `IPL_Version_2_Final.ipynb`.
+trained in `IPL_Version_2_Fixed.ipynb` (one level up).
+
+## Fix applied in this version
+
+The raw `IPL_2021_2025_matches.csv` contains two names for the same franchise —
+**"Royal Challengers Bangalore"** (pre-2024) and **"Royal Challengers Bengaluru"**
+(post-rebrand). The original notebook trained on the data without merging them,
+which silently created **11 encoded teams instead of 10**, split RCB's match
+history and titles across two identities, and meant `team_data.py` (which only
+has styling/info for "Royal Challengers Bengaluru") couldn't recognize the older
+name in the dashboard.
+
+`IPL_Version_2_Fixed.ipynb` adds a one-line normalization right after loading the
+CSV (`team1`, `team2`, `toss_winner`, `winner` columns) so RCB is treated as a
+single team throughout cleaning, feature engineering, training, and the dashboard.
+With that fix, the notebook now reproduces the intended result: **10 teams**,
+**XGBoost** selected as the best algorithm, **~54.3% held-out accuracy** on the
+2025 season — matching what this deploy folder expects.
+
+All five `.pkl` artifacts in this folder were regenerated from the fixed notebook,
+so they're consistent with each other (previously, artifacts from different notebook
+runs could disagree on the team count).
 
 ## Files
 
@@ -10,10 +31,10 @@ trained in `IPL_Version_2_Final.ipynb`.
 | `app.py` | Streamlit dashboard (team profiles, stadium info, head-to-head history, standings, live prediction) |
 | `team_data.py` | Static reference data: franchise colors, home grounds, founding years, IPL titles, stadium capacities |
 | `requirements.txt` | Python dependencies |
-| `ipl_best_model.pkl` | Trained model — currently **XGBoost**, ~54.3% held-out accuracy (auto-updates to whichever algorithm wins the notebook's comparison) |
+| `ipl_best_model.pkl` | Trained model — **XGBoost**, ~54.3% held-out accuracy (auto-updates to whichever algorithm wins the notebook's comparison) |
 | `ipl_best_model_name.pkl` | Name of the winning algorithm, shown in the app header |
 | `ipl_best_features.pkl` | Feature list the model expects, in order |
-| `ipl_team_encoder.pkl` | `LabelEncoder` used to encode team names |
+| `ipl_team_encoder.pkl` | `LabelEncoder` used to encode team names (10 classes) |
 | `df_v2_full.pkl` | Full engineered match history (needed at prediction time to compute recent-form/head-to-head features, and to power the dashboard's history tables and charts) |
 
 ### Dashboard features
@@ -42,7 +63,7 @@ Streamlit will open the app at `http://localhost:8501`.
 ## 2. Deploy for free — Streamlit Community Cloud (recommended, easiest)
 
 1. Push this `deploy/` folder to a public (or private) GitHub repo, with `app.py`,
-   `requirements.txt`, and the four `.pkl` files at the repo root (or note the subfolder
+   `requirements.txt`, and the five `.pkl` files at the repo root (or note the subfolder
    path when configuring the app).
 2. Go to [share.streamlit.io](https://share.streamlit.io), sign in with GitHub.
 3. Click **New app**, select the repo/branch, and set the main file path to `app.py`.
@@ -64,20 +85,23 @@ Any host that runs a Python web process works the same way:
 ## 4. Retraining / updating the model
 
 If you retrain the model (new season's data, different features, different algorithm),
-re-export the four `.pkl` files from the notebook with the same names used here
-(`joblib.dump(...)`), drop them into this folder, and redeploy — `app.py` doesn't need to
-change unless the feature engineering itself changes.
+re-export the five `.pkl` files from `IPL_Version_2_Fixed.ipynb` with the same names used
+here (`joblib.dump(...)`), drop them into this folder, and redeploy — `app.py` doesn't need
+to change unless the feature engineering itself changes.
 
 ## Notes / limitations
 
 - Model accuracy is **~54%** on the single held-out 2025 season — a modest edge over a
   coin flip, not a reliable betting signal. The app includes an explicit disclaimer.
 - The "Royal Challengers Bangalore" → "Royal Challengers Bengaluru" 2024 rename is now
-  normalized to a single team name throughout the data and model (previously these were
-  two separate encoded teams, which understated RCB's real history and title count).
+  normalized to a single team name throughout the data and model (see "Fix applied" above).
 - Predictions use the **full match history** (`df_v2_full.pkl`) to compute recent-form and
   head-to-head features, so they reflect "form as of the end of the dataset" (2025 season),
   not a specific future date.
 - Stadium capacities and franchise metadata in `team_data.py` are approximate, stable
   reference facts — update them there if a franchise rebrands, relocates, or wins a
   future title.
+- The notebook's Version 2 experiment (adding overall/venue/batting-first historical rates)
+  actually *hurt* accuracy on this small dataset (~277 training matches) — more history
+  features add noise faster than signal here. The deployed model deliberately uses the
+  leaner Version 1 feature set.
